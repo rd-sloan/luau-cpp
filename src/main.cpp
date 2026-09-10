@@ -16,9 +16,50 @@ static std::string readFile(const std::string& path)
 }
 
 
-class Board
+class GameState
 {
 public:
+	/*static GameState& Instance()
+	{
+		static GameState singleton;
+		return singleton;
+	}*/
+
+	/** static Functions for luau bindings **/
+	static int l_getBoard(lua_State* luaState)
+	{
+		// Retrieve the GameState * stashed as an upvalue
+		GameState* self = static_cast<GameState*>(lua_touserdata(luaState, lua_upvalueindex(1)));
+		if (self == nullptr)
+		{
+			std::fprintf(stderr, "l_getBoard could not find gamestate ptr");
+			return 1;
+		}
+
+		lua_newtable(luaState); // outer table (rows)
+		for (int row = 0; row < NumberOfRows; ++row)
+		{
+			lua_newtable(luaState); // inner table: (column)
+			for (int col = 0; col < NumberOfColumns; ++col)
+			{
+				// pushes integer to the stack
+				lua_pushinteger(luaState, self->m_board[row][col]);
+				// actually inserts into table
+				// -2 is the index the inner table is at in the stack
+				// (-1 is the top, and the integer we just pushed)
+				// col + 1 is the index (lua starts indices at 1 instead of 0).
+				lua_rawseti(luaState, -2, col + 1);
+			}
+			lua_rawseti(luaState, -2, row + 1);
+		}
+		// This return tells luau "Take 1 value off the top of the stack - thats your result"
+		// The top value is the outer table, which contains all these values.
+		return 1;
+	}
+
+
+	/** Regular functions **/
+
 	// todo instead of class functions lets just make these functions that take in a board.
 	void Init()
 	{
@@ -84,7 +125,7 @@ public:
 
 		// try to find where 'gravity' would take the piece
 		bool validMove = false;
-		for (int i = NumberOfRows; i >= 0; --i)
+		for (int i = NumberOfRows - 1; i >= 0; --i)
 		{
 			if (m_board[i][colNumber] == EmptyMarker)
 			{
@@ -133,6 +174,26 @@ int main()
 		return 1;
 	}
 
+	// Setup GameState
+	GameState gameState;
+	gameState.Init();
+	gameState.TryPlayMove(3, 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+
+	
+	// luau bindings
+	// If didn't do the class, alternative here would be a global static function
+	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
+
+	// pushes game state pointer as upvalue #1
+	lua_pushlightuserdata(luaState, &gameState); 
+	// captures pointer and exposes function binding, the 1 here indicates to get the gamestate from upvalue 1
+	lua_pushcclosure(luaState, GameState::l_getBoard, "getBoard", 1); 
+	lua_setglobal(luaState, "getBoard");
+
+
+
 	// run the luaa script
 	if (lua_pcall(luaState, 0, LUA_MULTRET, 0) != LUA_OK)
 	{
@@ -143,24 +204,25 @@ int main()
 
 	lua_close(luaState);
 
-	Board board;
-	board.Init();
-	std::fprintf(stdout, board.GetDisplayString().c_str());
+	// Messy prototyping
+	/*GameState gameState;
+	gameState.Init();
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
 	std::fprintf(stdout, "\nPlay column 3, player 1\n");
-	board.TryPlayMove(3, 1);
-	std::fprintf(stdout, board.GetDisplayString().c_str());
+	gameState.TryPlayMove(3, 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
 	std::fprintf(stdout, "\nPlay column 3, player 2\n");
-	board.TryPlayMove(3, 2);
-	std::fprintf(stdout, board.GetDisplayString().c_str());
+	gameState.TryPlayMove(3, 2);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
 	std::fprintf(stdout, "\nPlay column 4, player 1\n");
-	board.TryPlayMove(4, 1);
-	std::fprintf(stdout, board.GetDisplayString().c_str());
+	gameState.TryPlayMove(4, 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
 	std::fprintf(stdout, "\nPlay column 2, player 2\n");
-	board.TryPlayMove(2, 2);
-	std::fprintf(stdout, board.GetDisplayString().c_str());
+	gameState.TryPlayMove(2, 2);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
 	std::fprintf(stdout, "\nPlay column 4, player 1\n");
-	board.TryPlayMove(4, 1);
-	std::fprintf(stdout, board.GetDisplayString().c_str());
+	gameState.TryPlayMove(4, 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());*/
 
 
 	return 0;
