@@ -226,10 +226,14 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 	// captures pointer and exposes function binding, the 1 here indicates to get the gamestate from upvalue 1
 	lua_pushcclosure(luaState, GameState::l_getBoard, "getBoard", 1);
 	lua_setglobal(luaState, "getBoard");
+	// If didn't do the class, alternative above would be a global static function
+	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
+	// another alternative would be to make GameState a singleton and make the Getboard function get the singleton.
+
+	// human move doesn't need the board, so we don't need to push user data or closure, can just push function.
 	lua_pushcfunction(luaState, GameState::l_getHumanMove, "getHumanMove");
 	lua_setglobal(luaState, "getHumanMove");
-	// If didn't do the class, alternative here would be a global static function
-	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
+	
 
 
 	// compile source code into bytecode
