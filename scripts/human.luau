@@ -1,3 +1,5 @@
+--!strict
+
 --print("Hello World!")
 --local x = 10 + 32
 --print("x =", x)
@@ -18,8 +20,6 @@
 
 function getMove(myPlayerNumber: number) : number
     ---- logic ----
-    local board = getBoard();
-    local column = 5
-    print(`fake human playing column {column}`)
+    local column: number = getHumanMove()
     return column
 end

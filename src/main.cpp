@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <iostream>
 
 #include "lua.h"
 #include "lualib.h"
@@ -19,12 +20,6 @@ static std::string readFile(const std::string& path)
 class GameState
 {
 public:
-	/*static GameState& Instance()
-	{
-		static GameState singleton;
-		return singleton;
-	}*/
-
 	/** static Functions for luau bindings **/
 	static int l_getBoard(lua_State* luaState)
 	{
@@ -54,6 +49,21 @@ public:
 		}
 		// This return tells luau "Take 1 value off the top of the stack - thats your result"
 		// The top value is the outer table, which contains all these values.
+		return 1;
+	}
+
+	// Luau can't read from stdin, so this is a workaround.
+	// The human script just calls this function.
+	// This could be handled all in C++ by assuming player 1 is always human and getting input, 
+	// but by doing it this way we have the option of easily making both players AI scripts if we choose.
+	static int l_getHumanMove(lua_State* luaState)
+	{
+		// TODO: validate this is a valid column number lol
+		int col;
+		std::cout << "Enter column (1-7): ";
+		std::cin >> col;
+
+		lua_pushinteger(luaState, col);
 		return 1;
 	}
 
@@ -138,6 +148,60 @@ public:
 		return validMove;
 	}
 
+	// TODO could optimize this by just checking around the most recent play (this does a full board sweep)
+	bool CheckWin(uint8_t player)
+	{
+		// Horizontal check
+		for (int row = 0; row < NumberOfRows; row++) {
+			for (int col = 0; col <= NumberOfColumns - 4; col++) {
+				if (m_board[row][col] == player &&
+					m_board[row][col + 1] == player &&
+					m_board[row][col + 2] == player &&
+					m_board[row][col + 3] == player) {
+					return true;
+				}
+			}
+		}
+
+		// Vertical check
+		for (int col = 0; col < NumberOfColumns; col++) {
+			for (int row = 0; row <= NumberOfRows - 4; row++) {
+				if (m_board[row][col] == player &&
+					m_board[row + 1][col] == player &&
+					m_board[row + 2][col] == player &&
+					m_board[row + 3][col] == player) {
+					return true;
+				}
+			}
+		}
+
+		// Diagonal check (down-right: \ )
+		for (int row = 0; row <= NumberOfRows - 4; row++) {
+			for (int col = 0; col <= NumberOfColumns - 4; col++) {
+				if (m_board[row][col] == player &&
+					m_board[row + 1][col + 1] == player &&
+					m_board[row + 2][col + 2] == player &&
+					m_board[row + 3][col + 3] == player) {
+					return true;
+				}
+			}
+		}
+
+		// Diagonal check (down-left: / )
+		for (int row = 0; row <= NumberOfRows - 4; row++) {
+			for (int col = 3; col < NumberOfColumns; col++) {
+				if (m_board[row][col] == player &&
+					m_board[row + 1][col - 1] == player &&
+					m_board[row + 2][col - 2] == player &&
+					m_board[row + 3][col - 3] == player) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
 private:
 	static const uint8_t NumberOfColumns = 7;
 	static const uint8_t NumberOfRows = 6;
@@ -162,6 +226,8 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 	// captures pointer and exposes function binding, the 1 here indicates to get the gamestate from upvalue 1
 	lua_pushcclosure(luaState, GameState::l_getBoard, "getBoard", 1);
 	lua_setglobal(luaState, "getBoard");
+	lua_pushcfunction(luaState, GameState::l_getHumanMove, "getHumanMove");
+	lua_setglobal(luaState, "getHumanMove");
 	// If didn't do the class, alternative here would be a global static function
 	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
 
@@ -192,6 +258,7 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 	return luaState;
 }
 
+// todo: can the player num be saved on the lua state?
 uint8_t GetMoveFromScript(lua_State* luaState, GameState* game, int playerNum)
 {
 	lua_getglobal(luaState, "getMove");					// push function
@@ -215,26 +282,48 @@ int main()
 	lua_State* player1L = SetupPlayerState("script.luau", &gameState);
 	lua_State* player2L = SetupPlayerState("human.luau", &gameState);
 
-	// debug fake plays
-	gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
-	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
-	gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
-	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
+	bool endGame = false;
+	bool player1Turn = true;
+	while (!endGame)
+	{
+		lua_State* current = player1Turn ? player1L : player2L;
+		uint8_t playerNum = player1Turn ? 1 : 2;
+
+		// get and play the player's move
+		uint8_t col = GetMoveFromScript(current, &gameState, playerNum) - 1; // -1 because luau uses 1-7 instead of 0-6
+		std::fprintf(stdout, "Player %i plays column %i\n", playerNum, col);
+		gameState.TryPlayMove(col, playerNum);
+		std::fprintf(stdout, gameState.GetDisplayString().c_str());
+
+		// check for win
+		if (gameState.CheckWin(playerNum))
+		{
+			std::fprintf(stdout, "Player %i wins!!!!!!", playerNum);
+			endGame = true;		// since we break this isn't really necessary, but just in case.
+			break;
+		}
+
+		player1Turn = !player1Turn;
+	}
 
 	
 	lua_close(player1L);
 	lua_close(player2L);
 
 
-
+	// debug fake plays
+	/*gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+	gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");*/
 
 
 	// Messy prototyping
