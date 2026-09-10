@@ -7,7 +7,7 @@
 #include "lualib.h"
 #include "luacode.h"
 
-static std::string readFile(const char* path)
+static std::string readFile(const std::string& path)
 {
 	std::ifstream file(path);
 	std::stringstream ss;
@@ -17,7 +17,7 @@ static std::string readFile(const char* path)
 
 int main()
 {
-	std::string source = readFile("scripts/script.luau");
+	std::string source = readFile(std::string(SCRIPTS_DIR) + "/script.luau");
 
 	// compile source code into bytecode
 	size_t bytecodeSize = 0;

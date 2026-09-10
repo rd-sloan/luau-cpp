@@ -13,9 +13,7 @@ target_link_libraries(luau_cpp PRIVATE
     Luau.VM
 )
 
-# Copy the scripts folder next to the built executable so relative paths still work
-add_custom_command(TARGET luau_cpp POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/scripts
-        $<TARGET_FILE_DIR:luau_cpp>/scripts
+# preprocessor define for script directory
+target_compile_definitions(luau_cpp PRIVATE
+    SCRIPTS_DIR="${CMAKE_SOURCE_DIR}/scripts"
 )
