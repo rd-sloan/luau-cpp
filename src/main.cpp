@@ -150,18 +150,26 @@ private:
 };
 
 
-
-int main()
+lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 {
-	std::string source = readFile(std::string(SCRIPTS_DIR) + "/script.luau");
-
-	// compile source code into bytecode
-	size_t bytecodeSize = 0;
-	char* bytecode = luau_compile(source.c_str(), source.size(), nullptr, &bytecodeSize);
-
 	// Create a Luau VM state
 	lua_State* luaState = luaL_newstate();
 	luaL_openlibs(luaState); // opens standard library (print, math, string, etc)
+
+	// luau bindings
+	// pushes game state pointer as upvalue #1
+	lua_pushlightuserdata(luaState, gameState);
+	// captures pointer and exposes function binding, the 1 here indicates to get the gamestate from upvalue 1
+	lua_pushcclosure(luaState, GameState::l_getBoard, "getBoard", 1);
+	lua_setglobal(luaState, "getBoard");
+	// If didn't do the class, alternative here would be a global static function
+	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
+
+
+	// compile source code into bytecode
+	std::string source = readFile(std::string(SCRIPTS_DIR) + "/" + scriptName);
+	size_t bytecodeSize = 0;
+	char* bytecode = luau_compile(source.c_str(), source.size(), nullptr, &bytecodeSize);
 
 	// Load compiled bytecode into VM
 	int result = luau_load(luaState, "script", bytecode, bytecodeSize, 0);
@@ -171,38 +179,96 @@ int main()
 	{
 		std::fprintf(stderr, "failed to load script:%s\n", lua_tostring(luaState, -1));
 		lua_close(luaState);
-		return 1;
+		return nullptr;
 	}
 
-	// Setup GameState
+	// run the top-level code once - this defines getMove() etc as globals
+	if (lua_pcall(luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
+		std::fprintf(stderr, "Error running %s: %s\n", scriptName, lua_tostring(luaState, -1));
+		lua_close(luaState);
+		return nullptr;
+	}
+
+	return luaState;
+}
+
+uint8_t GetMoveFromScript(lua_State* luaState, GameState* game, int playerNum)
+{
+	lua_getglobal(luaState, "getMove");					// push function
+	lua_pushinteger(luaState, playerNum);				// push arg (player number)
+	lua_pcall(luaState, /*nargs*/1, /*nresults*/1, 0);	// run code
+	uint8_t col = (uint8_t)lua_tointeger(luaState, -1);			
+	lua_pop(luaState, 1);								// pop the return value
+	return col;
+}
+
+
+int main()
+{
 	GameState gameState;
 	gameState.Init();
-	gameState.TryPlayMove(3, 1);
+	//gameState.TryPlayMove(3, 1);
 	std::fprintf(stdout, gameState.GetDisplayString().c_str());
 	std::fprintf(stdout, "\n\n");
 
-	
-	// luau bindings
-	// If didn't do the class, alternative here would be a global static function
-	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
+	// init players
+	lua_State* player1L = SetupPlayerState("script.luau", &gameState);
+	lua_State* player2L = SetupPlayerState("human.luau", &gameState);
 
-	// pushes game state pointer as upvalue #1
-	lua_pushlightuserdata(luaState, &gameState); 
-	// captures pointer and exposes function binding, the 1 here indicates to get the gamestate from upvalue 1
-	lua_pushcclosure(luaState, GameState::l_getBoard, "getBoard", 1); 
-	lua_setglobal(luaState, "getBoard");
+	// debug fake plays
+	gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+	gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
+	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
+	std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	std::fprintf(stdout, "\n\n");
 
 
+
+
+	//std::string source = readFile(std::string(SCRIPTS_DIR) + "/script.luau");
+
+	//// compile source code into bytecode
+	//size_t bytecodeSize = 0;
+	//char* bytecode = luau_compile(source.c_str(), source.size(), nullptr, &bytecodeSize);
+
+	//// Create a Luau VM state
+	//lua_State* luaState = luaL_newstate();
+	//luaL_openlibs(luaState); // opens standard library (print, math, string, etc)
+
+	//// Load compiled bytecode into VM
+	//int result = luau_load(luaState, "script", bytecode, bytecodeSize, 0);
+	//free(bytecode);
+
+	//if (result != 0)
+	//{
+	//	std::fprintf(stderr, "failed to load script:%s\n", lua_tostring(luaState, -1));
+	//	lua_close(luaState);
+	//	return 1;
+	//}
+
+	// Setup GameState
+	//GameState gameState;
+	//gameState.Init();
+	//gameState.TryPlayMove(3, 1);
+	//std::fprintf(stdout, gameState.GetDisplayString().c_str());
+	//std::fprintf(stdout, "\n\n");
 
 	// run the luaa script
-	if (lua_pcall(luaState, 0, LUA_MULTRET, 0) != LUA_OK)
-	{
-		std::fprintf(stderr, "Runtime error: %s\n", lua_tostring(luaState, -1));
-		lua_close(luaState);
-		return 1;
-	}
+	//if (lua_pcall(luaState, 0, LUA_MULTRET, 0) != LUA_OK)
+	//{
+	//	std::fprintf(stderr, "Runtime error: %s\n", lua_tostring(luaState, -1));
+	//	lua_close(luaState);
+	//	return 1;
+	//}
 
-	lua_close(luaState);
+	//lua_close(luaState);
 
 	// Messy prototyping
 	/*GameState gameState;

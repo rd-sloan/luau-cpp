@@ -16,9 +16,10 @@
 --end
 
 
-function getMove(board, myPlayerNumber: number) : number
+function getMove(myPlayerNumber: number) : number
     ---- logic ----
-    local column = 4
-    print(`playing column {column}`)
+    local board = getBoard();
+    local column = 5
+    print(`fake human playing column {column}`)
     return column
 end
