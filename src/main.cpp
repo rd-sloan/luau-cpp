@@ -9,6 +9,275 @@
 #include "lualib.h"
 #include "luacode.h"
 
+
+using BoardType = std::vector<std::vector<uint8_t>>;
+BoardType g_board;
+static constexpr uint8_t NumberOfColumns = 7;
+static constexpr uint8_t NumberOfRows = 6;
+static constexpr uint8_t EmptyMarker = 0;
+static constexpr const char* EmptyDisplay = "-";
+static constexpr const char* Player1Display = "X";
+static constexpr char* Player2Display = "O";
+
+
+/** Regular Board functions **/
+
+void InitBoard(BoardType& board)
+{
+	// size board and init to all empty markers
+	board.resize(NumberOfRows, std::vector<uint8_t>(NumberOfColumns, EmptyMarker));
+}
+
+std::string GetPieceDisplayString(uint8_t piece)
+{
+	if (piece == 0)
+	{
+		return EmptyDisplay;
+	}
+	else if (piece == 1)
+	{
+		return Player1Display;
+	}
+	else if (piece == 2)
+	{
+		return Player2Display;
+	}
+	else
+	{
+		return "?";
+	}
+}
+
+std::string GetBoardDisplayString()
+{
+	std::string displayString;
+	for (int row = 0; row < NumberOfRows; ++row)
+	{
+		for (int col = 0; col < NumberOfColumns; ++col)
+		{
+			displayString += GetPieceDisplayString(g_board[row][col]) + " ";
+		}
+		displayString += "\n";
+	}
+	displayString += "--------------\n";
+	displayString += "1 2 3 4 5 6 7\n";
+	displayString += "\n";
+
+	return displayString;
+}
+
+bool IsColumnFull(BoardType& board, uint8_t colNumber)
+{
+	if (colNumber < NumberOfColumns)
+	{
+		return board[0][colNumber] != EmptyMarker;
+	}
+
+	return true; // if column doesn't exist its technically full
+}
+
+static bool TryDropPiece(BoardType& board, uint8_t colNumber, uint8_t playerNum)
+{
+	if (colNumber >= NumberOfColumns)
+	{
+		std::fprintf(stderr, "invalid colNum %i", colNumber);
+		return false;
+	}
+
+	if (playerNum != 1 && playerNum != 2)
+	{
+		std::fprintf(stderr, "invalid playerNum %i", playerNum);
+		return false;
+	}
+
+	if (IsColumnFull(board, colNumber))
+	{
+		std::fprintf(stderr, "column is full %i", colNumber);
+		return false;
+	}
+
+	// try to find where 'gravity' would take the piece
+	bool validMove = false;
+	for (int i = NumberOfRows - 1; i >= 0; --i)
+	{
+		if (board[i][colNumber] == EmptyMarker)
+		{
+			board[i][colNumber] = playerNum;
+			validMove = true;
+			break;
+		}
+	}
+
+	return validMove;
+}
+
+// TODO could optimize this by just checking around the most recent play (this does a full board sweep)
+static bool CheckWin(BoardType& board, uint8_t player)
+{
+	// Horizontal check
+	for (int row = 0; row < NumberOfRows; row++) {
+		for (int col = 0; col <= NumberOfColumns - 4; col++) {
+			if (board[row][col] == player &&
+				board[row][col + 1] == player &&
+				board[row][col + 2] == player &&
+				board[row][col + 3] == player) {
+				return true;
+			}
+		}
+	}
+
+	// Vertical check
+	for (int col = 0; col < NumberOfColumns; col++) {
+		for (int row = 0; row <= NumberOfRows - 4; row++) {
+			if (board[row][col] == player &&
+				board[row + 1][col] == player &&
+				board[row + 2][col] == player &&
+				board[row + 3][col] == player) {
+				return true;
+			}
+		}
+	}
+
+	// Diagonal check (down-right: \ )
+	for (int row = 0; row <= NumberOfRows - 4; row++) {
+		for (int col = 0; col <= NumberOfColumns - 4; col++) {
+			if (board[row][col] == player &&
+				board[row + 1][col + 1] == player &&
+				board[row + 2][col + 2] == player &&
+				board[row + 3][col + 3] == player) {
+				return true;
+			}
+		}
+	}
+
+	// Diagonal check (down-left: / )
+	for (int row = 0; row <= NumberOfRows - 4; row++) {
+		for (int col = 3; col < NumberOfColumns; col++) {
+			if (board[row][col] == player &&
+				board[row + 1][col - 1] == player &&
+				board[row + 2][col - 2] == player &&
+				board[row + 3][col - 3] == player) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool CheckTie(BoardType& board)
+{
+	// Check the top row, if all aren't empty, then its a tie 
+	// (assuming we did a win check before this)
+	for (int col = 0; col < NumberOfColumns; ++col)
+	{
+		if (board[0][col] == EmptyMarker)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+
+
+/** Luau Board Function Bindings **/
+static int l_getBoard(lua_State* luaState)
+{
+	lua_newtable(luaState); // outer table (rows)
+	for (int row = 0; row < NumberOfRows; ++row)
+	{
+		lua_newtable(luaState); // inner table: (column)
+		for (int col = 0; col < NumberOfColumns; ++col)
+		{
+			// pushes integer to the stack
+			lua_pushinteger(luaState, g_board[row][col]);
+			// actually inserts into table
+			// -2 is the index the inner table is at in the stack
+			// (-1 is the top, and the integer we just pushed)
+			// col + 1 is the index (lua starts indices at 1 instead of 0).
+			lua_rawseti(luaState, -2, col + 1);
+		}
+		lua_rawseti(luaState, -2, row + 1);
+	}
+	// This return tells luau "Take 1 value off the top of the stack - thats your result"
+	// The top value is the outer table, which contains all these values.
+	return 1;
+}
+
+static int l_getEmptyMarker(lua_State* luaState)
+{
+	lua_pushinteger(luaState, EmptyMarker);
+	return 1;
+}
+
+// Luau can't read from stdin, so this is a workaround.
+// The human script just calls this function.
+// This could be handled all in C++ by assuming player 1 is always human and getting input, 
+// but by doing it this way we have the option of easily making both players AI scripts if we choose.
+static int l_getHumanMove(lua_State* luaState)
+{
+	// TODO: validate this is a valid column number lol
+	int col;
+	std::cout << "Enter column (1-7): ";
+	std::cin >> col;
+
+	lua_pushinteger(luaState, col);
+	return 1;
+}
+
+/**
+* Checks if a given move would potentially win
+* There is some extra board copying here
+* (1 when lua calls GetBoard, 1 when lua is calling this and we copy the board back)
+* Could just use the board ref we have here, but I like having an example of getting bigger data back from lua
+* And it could give us some more freedom for more advanced AI trying to check future moves
+*/
+static int l_wouldWin(lua_State* L) {
+	// arg 1: board (table of tables)
+	// arg 2: column (1-indexed, from Luau)
+	// arg 3: player number
+
+	// Copy board passed in from luau
+	BoardType tempBoard;
+	InitBoard(tempBoard);
+	for (int row = 1; row <= NumberOfRows; row++) 
+	{
+		lua_rawgeti(L, 1, row); // push board[row]
+		for (int col = 1; col <= NumberOfColumns; col++) 
+		{
+			lua_rawgeti(L, -1, col); // push board[row][col]
+			tempBoard[row - 1][col - 1] = static_cast<uint8_t>(lua_tointeger(L, -1));
+			lua_pop(L, 1); // pop the value
+		}
+		lua_pop(L, 1); // pop the row table
+	}
+
+	int col = static_cast<int>(lua_tointeger(L, 2)) - 1; // convert to 0-indexed
+	uint8_t player = static_cast<uint8_t>(lua_tointeger(L, 3));
+
+	// Simulate dropping into tempBoard (gravity: find lowest open row in this column)
+	bool dropped = TryDropPiece(tempBoard, col, player);
+
+	if (!dropped) 
+	{
+		// Column was full - shouldn't happen if caller only passes valid columns
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	bool won = CheckWin(tempBoard, player);
+	lua_pushboolean(L, won);
+	return 1;
+}
+
+
+bool fileExists(const std::string& path)
+{
+	std::ifstream f(path);
+	return f.good();
+}
+
 static std::string readFile(const std::string& path)
 {
 	std::ifstream file(path);
@@ -18,323 +287,24 @@ static std::string readFile(const std::string& path)
 }
 
 
-using BoardType = std::vector<std::vector<uint8_t>>;
-
-
-// TODO all this crap does not need to be wrapped in GameState lol.
-class GameState
-{
-public:
-	static constexpr uint8_t NumberOfColumns = 7;
-	static constexpr uint8_t NumberOfRows = 6;
-	static constexpr uint8_t EmptyMarker = 0;
-	static constexpr const char* EmptyDisplay = "-";
-	static constexpr const char* Player1Display = "X";
-	static constexpr char* Player2Display = "O";
-
-	/** static Functions for luau bindings **/
-	static int l_getBoard(lua_State* luaState)
-	{
-		// Retrieve the GameState * stashed as an upvalue
-		GameState* self = static_cast<GameState*>(lua_touserdata(luaState, lua_upvalueindex(1)));
-		if (self == nullptr)
-		{
-			std::fprintf(stderr, "l_getBoard could not find gamestate ptr");
-			return 1;
-		}
-
-		lua_newtable(luaState); // outer table (rows)
-		for (int row = 0; row < NumberOfRows; ++row)
-		{
-			lua_newtable(luaState); // inner table: (column)
-			for (int col = 0; col < NumberOfColumns; ++col)
-			{
-				// pushes integer to the stack
-				lua_pushinteger(luaState, self->m_board[row][col]);
-				// actually inserts into table
-				// -2 is the index the inner table is at in the stack
-				// (-1 is the top, and the integer we just pushed)
-				// col + 1 is the index (lua starts indices at 1 instead of 0).
-				lua_rawseti(luaState, -2, col + 1);
-			}
-			lua_rawseti(luaState, -2, row + 1);
-		}
-		// This return tells luau "Take 1 value off the top of the stack - thats your result"
-		// The top value is the outer table, which contains all these values.
-		return 1;
-	}
-
-	static int l_getEmptyMarker(lua_State* luaState)
-	{
-		lua_pushinteger(luaState, EmptyMarker);
-		return 1;
-	}
-
-	// Luau can't read from stdin, so this is a workaround.
-	// The human script just calls this function.
-	// This could be handled all in C++ by assuming player 1 is always human and getting input, 
-	// but by doing it this way we have the option of easily making both players AI scripts if we choose.
-	static int l_getHumanMove(lua_State* luaState)
-	{
-		// TODO: validate this is a valid column number lol
-		int col;
-		std::cout << "Enter column (1-7): ";
-		std::cin >> col;
-
-		lua_pushinteger(luaState, col);
-		return 1;
-	}
-
-	/**
-	* Checks if a given move would potentially win
-	* There is some extra board copying here
-	* (1 when lua calls GetBoard, 1 when lua is calling this and we copy the board back)
-	* Could just use the board ref we have here, but I like having an example of getting bigger data back from lua
-	* And it could give us some more freedom for more advanced AI trying to check future moves
-	*/
-	static int l_wouldWin(lua_State* L) {
-		// arg 1: board (table of tables)
-		// arg 2: column (1-indexed, from Luau)
-		// arg 3: player number
-
-		// Copy board passed in from luau
-		BoardType tempBoard;
-		tempBoard.resize(NumberOfRows, std::vector<uint8_t>(NumberOfColumns, EmptyMarker));
-		for (int row = 1; row <= NumberOfRows; row++) 
-		{
-			lua_rawgeti(L, 1, row); // push board[row]
-			for (int col = 1; col <= NumberOfColumns; col++) 
-			{
-				lua_rawgeti(L, -1, col); // push board[row][col]
-				tempBoard[row - 1][col - 1] = static_cast<uint8_t>(lua_tointeger(L, -1));
-				lua_pop(L, 1); // pop the value
-			}
-			lua_pop(L, 1); // pop the row table
-		}
-
-		int col = static_cast<int>(lua_tointeger(L, 2)) - 1; // convert to 0-indexed
-		uint8_t player = static_cast<uint8_t>(lua_tointeger(L, 3));
-
-		// Simulate dropping into tempBoard (gravity: find lowest open row in this column)
-		bool dropped = TryDropPiece(tempBoard, col, player);
-
-		if (!dropped) 
-		{
-			// Column was full - shouldn't happen if caller only passes valid columns
-			lua_pushboolean(L, false);
-			return 1;
-		}
-
-		bool won = CheckWin(tempBoard, player);
-		lua_pushboolean(L, won);
-		return 1;
-	}
-
-
-
-
-
-	/** Regular functions **/
-
-	// todo instead of class functions lets just make these functions that take in a board.
-	void Init()
-	{
-		// size board and init to all empty markers
-		m_board.resize(NumberOfRows, std::vector<uint8_t>(NumberOfColumns, EmptyMarker));
-	}
-
-	std::string GetPieceDisplayString(uint8_t piece)
-	{
-		if (piece == 0)
-		{
-			return EmptyDisplay;
-		}
-		else if (piece == 1)
-		{
-			return Player1Display;
-		}
-		else if (piece == 2)
-		{
-			return Player2Display;
-		}
-		else
-		{
-			return "?";
-		}
-	}
-
-	std::string GetDisplayString()
-	{
-		std::string displayString;
-		for (int row = 0; row < NumberOfRows; ++row)
-		{
-			for (int col = 0; col < NumberOfColumns; ++col)
-			{
-				displayString += GetPieceDisplayString(m_board[row][col]) + " ";
-			}
-			displayString += "\n";
-		}
-		displayString += "--------------\n";
-		displayString += "1 2 3 4 5 6 7\n";
-		displayString += "\n";
-
-		return displayString;
-	}
-
-	bool IsColumnFull(uint8_t colNumber)
-	{
-		if (colNumber < NumberOfColumns)
-		{
-			return m_board[0][colNumber] != EmptyMarker;
-		}
-
-		return true; // if column doesn't exist its technically full
-	}
-
-	bool TryDropPiece(uint8_t colNumber, uint8_t playerNum)
-	{
-		if (IsColumnFull(colNumber))
-		{
-			std::fprintf(stderr, "column is full %i", colNumber);
-			return false;
-		}
-
-		return TryDropPiece(m_board, colNumber, playerNum);
-	}
-
-	static bool TryDropPiece(BoardType& board, uint8_t colNumber, uint8_t playerNum)
-	{
-		if (colNumber >= NumberOfColumns)
-		{
-			std::fprintf(stderr, "invalid colNum %i", colNumber);
-			return false;
-		}
-
-		if (playerNum != 1 && playerNum != 2)
-		{
-			std::fprintf(stderr, "invalid playerNum %i", playerNum);
-			return false;
-		}
-
-		// try to find where 'gravity' would take the piece
-		bool validMove = false;
-		for (int i = NumberOfRows - 1; i >= 0; --i)
-		{
-			if (board[i][colNumber] == EmptyMarker)
-			{
-				board[i][colNumber] = playerNum;
-				validMove = true;
-				break;
-			}
-		}
-
-		return validMove;
-	}
-
-	bool CheckWin(uint8_t player)
-	{
-		return CheckWin(m_board, player);
-	}
-
-	// TODO could optimize this by just checking around the most recent play (this does a full board sweep)
-	static bool CheckWin(BoardType& board, uint8_t player)
-	{
-		// Horizontal check
-		for (int row = 0; row < NumberOfRows; row++) {
-			for (int col = 0; col <= NumberOfColumns - 4; col++) {
-				if (board[row][col] == player &&
-					board[row][col + 1] == player &&
-					board[row][col + 2] == player &&
-					board[row][col + 3] == player) {
-					return true;
-				}
-			}
-		}
-
-		// Vertical check
-		for (int col = 0; col < NumberOfColumns; col++) {
-			for (int row = 0; row <= NumberOfRows - 4; row++) {
-				if (board[row][col] == player &&
-					board[row + 1][col] == player &&
-					board[row + 2][col] == player &&
-					board[row + 3][col] == player) {
-					return true;
-				}
-			}
-		}
-
-		// Diagonal check (down-right: \ )
-		for (int row = 0; row <= NumberOfRows - 4; row++) {
-			for (int col = 0; col <= NumberOfColumns - 4; col++) {
-				if (board[row][col] == player &&
-					board[row + 1][col + 1] == player &&
-					board[row + 2][col + 2] == player &&
-					board[row + 3][col + 3] == player) {
-					return true;
-				}
-			}
-		}
-
-		// Diagonal check (down-left: / )
-		for (int row = 0; row <= NumberOfRows - 4; row++) {
-			for (int col = 3; col < NumberOfColumns; col++) {
-				if (board[row][col] == player &&
-					board[row + 1][col - 1] == player &&
-					board[row + 2][col - 2] == player &&
-					board[row + 3][col - 3] == player) {
-					return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	bool CheckTie()
-	{
-		// Check the top row, if all aren't empty, then its a tie 
-		// (assuming we did a win check before this)
-		for (int col = 0; col < NumberOfColumns; ++col)
-		{
-			if (m_board[0][col] == EmptyMarker)
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
-
-	private:
-	//uint8_t m_board[NumberOfRows][NumberOfColumns];
-	BoardType m_board;
-};
-
-
-lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
+lua_State* SetupPlayerState(const std::string& scriptName)
 {
 	// Create a Luau VM state
 	lua_State* luaState = luaL_newstate();
 	luaL_openlibs(luaState); // opens standard library (print, math, string, etc)
 
 	// luau bindings
-	// pushes game state pointer as upvalue #1
-	lua_pushlightuserdata(luaState, gameState);
-	// captures pointer and exposes function binding, the 1 here indicates to get the gamestate from upvalue 1
-	lua_pushcclosure(luaState, GameState::l_getBoard, "getBoard", 1);
-	lua_setglobal(luaState, "getBoard");
-	// If didn't do the class, alternative above would be a global static function
-	// Would not need to push user data, and would use pushcfunction instead of pushcclosure
-	// another alternative would be to make GameState a singleton and make the Getboard function get the singleton.
 
-	// human move doesn't need the board, so we don't need to push user data or closure, can just push function.
-	lua_pushcfunction(luaState, GameState::l_getHumanMove, "getHumanMove");
+	lua_pushcfunction(luaState, l_getBoard, "getBoard", 1);
+	lua_setglobal(luaState, "getBoard");
+
+	lua_pushcfunction(luaState, l_getHumanMove, "getHumanMove");
 	lua_setglobal(luaState, "getHumanMove");
 
-	lua_pushcfunction(luaState, GameState::l_getEmptyMarker, "getEmptyMarker");
+	lua_pushcfunction(luaState, l_getEmptyMarker, "getEmptyMarker");
 	lua_setglobal(luaState, "getEmptyMarker");
 	
-	lua_pushcfunction(luaState, GameState::l_wouldWin, "wouldWin");
+	lua_pushcfunction(luaState, l_wouldWin, "wouldWin");
 	lua_setglobal(luaState, "wouldWin");
 
 	// compile source code into bytecode
@@ -364,7 +334,7 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 }
 
 // todo: can the player num be saved on the lua state?
-uint8_t GetMoveFromScript(lua_State* luaState, GameState* game, int playerNum)
+uint8_t GetMoveFromScript(lua_State* luaState, int playerNum)
 {
 	lua_getglobal(luaState, "getMove");					// push function
 	lua_pushinteger(luaState, playerNum);				// push arg (player number)
@@ -374,11 +344,6 @@ uint8_t GetMoveFromScript(lua_State* luaState, GameState* game, int playerNum)
 	return col;
 }
 
-bool fileExists(const std::string& path) 
-{
-	std::ifstream f(path);
-	return f.good();
-}
 
 
 int main(int argc, char** argv)
@@ -404,13 +369,12 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	// init game state
-	GameState gameState;
-	gameState.Init();
+	// init board
+	InitBoard(g_board);
 
 	// init players
-	lua_State* player1L = SetupPlayerState(player1Script, &gameState);
-	lua_State* player2L = SetupPlayerState(player2Script, &gameState);
+	lua_State* player1L = SetupPlayerState(player1Script);
+	lua_State* player2L = SetupPlayerState(player2Script);
 
 	if (!player1L || !player2L)
 	{
@@ -433,27 +397,28 @@ int main(int argc, char** argv)
 		uint8_t playerNum = player1Turn ? 1 : 2;
 
 		// get and play the player's move
-		std::fprintf(stdout, "Player %i (%s) enter your move:\n", playerNum, gameState.GetPieceDisplayString(playerNum).c_str());
-		uint8_t col = GetMoveFromScript(current, &gameState, playerNum);
-		std::fprintf(stdout, "Player %i (%s) plays column %i\n", playerNum, gameState.GetPieceDisplayString(playerNum).c_str(), col);
-		gameState.TryDropPiece(col - 1, playerNum); // -1 because luau uses 1-7 instead of 0-6
-		std::fprintf(stdout, gameState.GetDisplayString().c_str());
+		std::fprintf(stdout, "Player %i (%s) enter your move:\n", playerNum, GetPieceDisplayString(playerNum).c_str());
+		uint8_t col = GetMoveFromScript(current, playerNum);
+		std::fprintf(stdout, "Player %i (%s) plays column %i\n", playerNum, GetPieceDisplayString(playerNum).c_str(), col);
+		TryDropPiece(g_board, col - 1, playerNum); // -1 because luau uses 1-7 instead of 0-6
+		std::fprintf(stdout, GetBoardDisplayString().c_str());
 
 		// check for win
-		if (gameState.CheckWin(playerNum))
+		if (CheckWin(g_board, playerNum))
 		{
 			std::fprintf(stdout, "Player %i (%s) wins!!!!!!", playerNum, playerNum == 1 ? player1Script.c_str() : player2Script.c_str());
 			endGame = true;		// since we break this isn't really necessary, but just in case.
 			break;
 		}
 
-		if (gameState.CheckTie())
+		if (CheckTie(g_board))
 		{
 			std::fprintf(stdout, "It's a tie, you both lose!");
 			endGame = true;		// since we break this isn't really necessary, but just in case.
 			break;
 		}
 
+		// swap turns
 		player1Turn = !player1Turn;
 	}
 
