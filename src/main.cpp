@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include <iostream>
+#include <vector>
 
 #include "lua.h"
 #include "lualib.h"
@@ -15,6 +16,9 @@ static std::string readFile(const std::string& path)
 	ss << file.rdbuf();
 	return ss.str();
 }
+
+
+using BoardType = std::vector<std::vector<uint8_t>>;
 
 
 // TODO all this crap does not need to be wrapped in GameState lol.
@@ -94,7 +98,8 @@ public:
 		// arg 3: player number
 
 		// Copy board passed in from luau
-		uint8_t tempBoard[NumberOfRows][NumberOfColumns];
+		BoardType tempBoard;
+		tempBoard.resize(NumberOfRows, std::vector<uint8_t>(NumberOfColumns, EmptyMarker));
 		for (int row = 1; row <= NumberOfRows; row++) 
 		{
 			lua_rawgeti(L, 1, row); // push board[row]
@@ -134,14 +139,8 @@ public:
 	// todo instead of class functions lets just make these functions that take in a board.
 	void Init()
 	{
-
-		for (int row = 0; row < NumberOfRows; ++row)
-		{
-			for (int col = 0; col < NumberOfColumns; ++col)
-			{
-				m_board[row][col] = EmptyMarker;
-			}
-		}
+		// size board and init to all empty markers
+		m_board.resize(NumberOfRows, std::vector<uint8_t>(NumberOfColumns, EmptyMarker));
 	}
 
 	std::string GetPieceDisplayString(uint8_t piece)
@@ -203,7 +202,7 @@ public:
 		return TryDropPiece(m_board, colNumber, playerNum);
 	}
 
-	static bool TryDropPiece(uint8_t board[NumberOfRows][NumberOfColumns], uint8_t colNumber, uint8_t playerNum)
+	static bool TryDropPiece(BoardType& board, uint8_t colNumber, uint8_t playerNum)
 	{
 		if (colNumber >= NumberOfColumns)
 		{
@@ -238,7 +237,7 @@ public:
 	}
 
 	// TODO could optimize this by just checking around the most recent play (this does a full board sweep)
-	static bool CheckWin(uint8_t board[NumberOfRows][NumberOfColumns], uint8_t player)
+	static bool CheckWin(BoardType& board, uint8_t player)
 	{
 		// Horizontal check
 		for (int row = 0; row < NumberOfRows; row++) {
@@ -307,7 +306,8 @@ public:
 
 
 	private:
-	uint8_t m_board[NumberOfRows][NumberOfColumns];
+	//uint8_t m_board[NumberOfRows][NumberOfColumns];
+	BoardType m_board;
 };
 
 
