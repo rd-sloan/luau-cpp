@@ -252,7 +252,7 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 
 
 	// compile source code into bytecode
-	std::string source = readFile(std::string(SCRIPTS_DIR) + "/" + scriptName);
+	std::string source = readFile(scriptName);
 	size_t bytecodeSize = 0;
 	char* bytecode = luau_compile(source.c_str(), source.size(), nullptr, &bytecodeSize);
 
@@ -269,7 +269,7 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 
 	// run the top-level code once - this defines getMove() etc as globals
 	if (lua_pcall(luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
-		std::fprintf(stderr, "Error running %s: %s\n", scriptName, lua_tostring(luaState, -1));
+		std::fprintf(stderr, "Error running %s: %s\n", scriptName.c_str(), lua_tostring(luaState, -1));
 		lua_close(luaState);
 		return nullptr;
 	}
@@ -288,19 +288,57 @@ uint8_t GetMoveFromScript(lua_State* luaState, GameState* game, int playerNum)
 	return col;
 }
 
-
-int main()
+bool fileExists(const std::string& path) 
 {
+	std::ifstream f(path);
+	return f.good();
+}
+
+
+int main(int argc, char** argv)
+{
+	// Defaults 
+	std::string player1Script = std::string(SCRIPTS_DIR) + "/random.luau";
+	std::string player2Script = std::string(SCRIPTS_DIR) + "/human.luau";
+
+	// Arguments
+	if (argc >= 2)
+	{
+		player1Script = argv[1];
+	}
+	if (argc >= 3) 
+	{
+		player2Script = argv[2];
+	}
+
+	if (!fileExists(player1Script) || !fileExists(player2Script)) 
+	{
+		std::fprintf(stderr, "Usage: %s [player1Script] [player2Script]\n", argv[0]);
+		std::fprintf(stderr, "Could not find one or both script files.\n");
+		return 1;
+	}
+
+	// init game state
 	GameState gameState;
 	gameState.Init();
-	//gameState.TryPlayMove(3, 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
 
 	// init players
-	lua_State* player1L = SetupPlayerState("random.luau", &gameState);
-	lua_State* player2L = SetupPlayerState("human.luau", &gameState);
+	lua_State* player1L = SetupPlayerState(player1Script, &gameState);
+	lua_State* player2L = SetupPlayerState(player2Script, &gameState);
 
+	if (!player1L || !player2L)
+	{
+		std::fprintf(stderr, "Missing players, aborting game\n");
+		return 1;
+	}
+
+	// Intro text
+	std::fprintf(stdout, "===================================\n");
+	std::fprintf(stdout, "=            CONNECT 4            =\n");
+	std::fprintf(stdout, "===================================\n");
+	std::fprintf(stdout, "\n");
+
+	// Game loop
 	bool endGame = false;
 	bool player1Turn = true;
 	while (!endGame)
@@ -309,9 +347,10 @@ int main()
 		uint8_t playerNum = player1Turn ? 1 : 2;
 
 		// get and play the player's move
-		uint8_t col = GetMoveFromScript(current, &gameState, playerNum) - 1; // -1 because luau uses 1-7 instead of 0-6
+		std::fprintf(stdout, "Player %i enter your move:\n", playerNum);
+		uint8_t col = GetMoveFromScript(current, &gameState, playerNum);
 		std::fprintf(stdout, "Player %i plays column %i\n", playerNum, col);
-		gameState.TryPlayMove(col, playerNum);
+		gameState.TryPlayMove(col - 1, playerNum); // -1 because luau uses 1-7 instead of 0-6
 		std::fprintf(stdout, gameState.GetDisplayString().c_str());
 
 		// check for win
@@ -322,7 +361,6 @@ int main()
 			break;
 		}
 
-		// TODO: check for tie
 		if (gameState.CheckTie())
 		{
 			std::fprintf(stdout, "It's a tie, you both lose!");
