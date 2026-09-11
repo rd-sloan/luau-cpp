@@ -298,7 +298,7 @@ bool fileExists(const std::string& path)
 int main(int argc, char** argv)
 {
 	// Defaults 
-	std::string player1Script = std::string(SCRIPTS_DIR) + "/random.luau";
+	std::string player1Script = std::string(SCRIPTS_DIR) + "/winThenBlock.luau";
 	std::string player2Script = std::string(SCRIPTS_DIR) + "/human.luau";
 
 	// Arguments
@@ -356,7 +356,7 @@ int main(int argc, char** argv)
 		// check for win
 		if (gameState.CheckWin(playerNum))
 		{
-			std::fprintf(stdout, "Player %i wins!!!!!!", playerNum);
+			std::fprintf(stdout, "Player %i (%s) wins!!!!!!", playerNum, playerNum == 1 ? player1Script.c_str() : player2Script.c_str());
 			endGame = true;		// since we break this isn't really necessary, but just in case.
 			break;
 		}
