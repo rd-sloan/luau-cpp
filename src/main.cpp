@@ -52,6 +52,12 @@ public:
 		return 1;
 	}
 
+	static int l_getEmptyMarker(lua_State* luaState)
+	{
+		lua_pushinteger(luaState, EmptyMarker);
+		return 1;
+	}
+
 	// Luau can't read from stdin, so this is a workaround.
 	// The human script just calls this function.
 	// This could be handled all in C++ by assuming player 1 is always human and getting input, 
@@ -81,11 +87,6 @@ public:
 				m_board[row][col] = EmptyMarker;
 			}
 		}
-
-		for (int i = 0; i < NumberOfColumns; ++i)
-		{
-			m_fullColumns[i] = false;
-		}
 	}
 
 	std::string GetDisplayString()
@@ -99,6 +100,7 @@ public:
 			}
 			displayString += "\n";
 		}
+		displayString += "\n";
 
 		return displayString;
 	}
@@ -107,10 +109,10 @@ public:
 	{
 		if (colNumber < NumberOfColumns)
 		{
-			return m_fullColumns[colNumber];
+			return m_board[0][colNumber] != EmptyMarker;
 		}
 
-		return true; // if column doesn't exist its technically fully
+		return true; // if column doesn't exist its technically full
 	}
 
 	bool TryPlayMove(uint8_t colNumber, uint8_t playerNum)
@@ -202,15 +204,25 @@ public:
 		return false;
 	}
 
+	bool CheckTie()
+	{
+		// Check the top row, if all aren't empty, then its a tie 
+		// (assuming we did a win check before this)
+		for (int col = 0; col < NumberOfColumns; ++col)
+		{
+			if (m_board[0][col] == EmptyMarker)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 private:
 	static const uint8_t NumberOfColumns = 7;
 	static const uint8_t NumberOfRows = 6;
 	static const uint8_t EmptyMarker = 0;
 	uint8_t m_board[NumberOfRows][NumberOfColumns];
-
-	//helper to make querying for full columns ez
-	bool m_fullColumns[NumberOfColumns];
-
 };
 
 
@@ -233,6 +245,9 @@ lua_State* SetupPlayerState(const std::string& scriptName, GameState* gameState)
 	// human move doesn't need the board, so we don't need to push user data or closure, can just push function.
 	lua_pushcfunction(luaState, GameState::l_getHumanMove, "getHumanMove");
 	lua_setglobal(luaState, "getHumanMove");
+
+	lua_pushcfunction(luaState, GameState::l_getEmptyMarker, "getEmptyMarker");
+	lua_setglobal(luaState, "getEmptyMarker");
 	
 
 
@@ -283,7 +298,7 @@ int main()
 	std::fprintf(stdout, "\n\n");
 
 	// init players
-	lua_State* player1L = SetupPlayerState("script.luau", &gameState);
+	lua_State* player1L = SetupPlayerState("random.luau", &gameState);
 	lua_State* player2L = SetupPlayerState("human.luau", &gameState);
 
 	bool endGame = false;
@@ -307,49 +322,20 @@ int main()
 			break;
 		}
 
+		// TODO: check for tie
+		if (gameState.CheckTie())
+		{
+			std::fprintf(stdout, "It's a tie, you both lose!");
+			endGame = true;		// since we break this isn't really necessary, but just in case.
+			break;
+		}
+
 		player1Turn = !player1Turn;
 	}
 
 	
 	lua_close(player1L);
 	lua_close(player2L);
-
-
-	// debug fake plays
-	/*gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
-	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
-	gameState.TryPlayMove(GetMoveFromScript(player1L, &gameState, 1), 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");
-	gameState.TryPlayMove(GetMoveFromScript(player2L, &gameState, 2), 2);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\n\n");*/
-
-
-	// Messy prototyping
-	/*GameState gameState;
-	gameState.Init();
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\nPlay column 3, player 1\n");
-	gameState.TryPlayMove(3, 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\nPlay column 3, player 2\n");
-	gameState.TryPlayMove(3, 2);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\nPlay column 4, player 1\n");
-	gameState.TryPlayMove(4, 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\nPlay column 2, player 2\n");
-	gameState.TryPlayMove(2, 2);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());
-	std::fprintf(stdout, "\nPlay column 4, player 1\n");
-	gameState.TryPlayMove(4, 1);
-	std::fprintf(stdout, gameState.GetDisplayString().c_str());*/
-
 
 	return 0;
 }
