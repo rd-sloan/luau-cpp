@@ -31,7 +31,7 @@ local function copyBoard(b, numCols: number, numRows: number, emptyMarker: numbe
 end
 
 -- Simulate dropping a piece into a column (mimics gravity)
--- TODO: We already have this logic in C++, should rework and expose a function here.
+-- TODO: We already have this logic in C++, could rework and expose a function here.
 local function drop(b, numCols: number, numRows: number, emptyMarker: number, col: number, player: number) : boolean
     for row = numRows, 1, -1 do
         if b[row][col] == emptyMarker then
@@ -43,7 +43,7 @@ local function drop(b, numCols: number, numRows: number, emptyMarker: number, co
 end
 
 -- Check if `player` has a 4-in-a-row anywhere on the 
--- TODO: We already have this logic in C++, should rework and expose a function here.
+-- TODO: We already have this logic in C++, could rework and expose a function here.
 local function checkWin(b, numCols: number, numRows: number, player: number) : boolean
     -- Horizontal
     for row = 1, numRows do

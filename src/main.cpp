@@ -89,6 +89,26 @@ public:
 		}
 	}
 
+	std::string GetPieceDisplayString(uint8_t piece)
+	{
+		if (piece == 0)
+		{
+			return EmptyDisplay;
+		}
+		else if (piece == 1)
+		{
+			return Player1Display;
+		}
+		else if (piece == 2)
+		{
+			return Player2Display;
+		}
+		else
+		{
+			return "?";
+		}
+	}
+
 	std::string GetDisplayString()
 	{
 		std::string displayString;
@@ -96,10 +116,12 @@ public:
 		{
 			for (int col = 0; col < NumberOfColumns; ++col)
 			{
-				displayString += std::to_string(m_board[row][col]) + " ";
+				displayString += GetPieceDisplayString(m_board[row][col]) + " ";
 			}
 			displayString += "\n";
 		}
+		displayString += "--------------\n";
+		displayString += "1 2 3 4 5 6 7\n";
 		displayString += "\n";
 
 		return displayString;
@@ -219,9 +241,12 @@ public:
 	}
 
 private:
-	static const uint8_t NumberOfColumns = 7;
-	static const uint8_t NumberOfRows = 6;
-	static const uint8_t EmptyMarker = 0;
+	static constexpr uint8_t NumberOfColumns = 7;
+	static constexpr uint8_t NumberOfRows = 6;
+	static constexpr uint8_t EmptyMarker = 0;
+	static constexpr const char* EmptyDisplay =  "-";
+	static constexpr const char* Player1Display = "X";
+	static constexpr char* Player2Display = "O";
 	uint8_t m_board[NumberOfRows][NumberOfColumns];
 };
 
@@ -347,9 +372,9 @@ int main(int argc, char** argv)
 		uint8_t playerNum = player1Turn ? 1 : 2;
 
 		// get and play the player's move
-		std::fprintf(stdout, "Player %i enter your move:\n", playerNum);
+		std::fprintf(stdout, "Player %i (%s) enter your move:\n", playerNum, gameState.GetPieceDisplayString(playerNum).c_str());
 		uint8_t col = GetMoveFromScript(current, &gameState, playerNum);
-		std::fprintf(stdout, "Player %i plays column %i\n", playerNum, col);
+		std::fprintf(stdout, "Player %i (%s) plays column %i\n", playerNum, gameState.GetPieceDisplayString(playerNum).c_str(), col);
 		gameState.TryPlayMove(col - 1, playerNum); // -1 because luau uses 1-7 instead of 0-6
 		std::fprintf(stdout, gameState.GetDisplayString().c_str());
 
