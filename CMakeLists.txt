@@ -6,7 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(external/luau)
 
-add_executable(luau_cpp src/main.cpp)
+add_executable(luau_cpp 
+	src/main.cpp
+	src/board.h
+	src/board.cpp
+	src/LuaBindings.h
+	src/LuaBindings.cpp
+)
 
 target_link_libraries(luau_cpp PRIVATE
     Luau.Compiler
