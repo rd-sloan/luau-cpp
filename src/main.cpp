@@ -88,7 +88,7 @@ uint8_t GetMoveFromScript(lua_State* luaState, int playerNum)
 int main(int argc, char** argv)
 {
 	// Defaults 
-	std::string player1Script = std::string(SCRIPTS_DIR) + "/winThenBlock.luau";
+	std::string player1Script = std::string(SCRIPTS_DIR) + "/winBlockCenterWeight.luau";
 	std::string player2Script = std::string(SCRIPTS_DIR) + "/human.luau";
 
 	// Arguments
